@@ -1,8 +1,8 @@
-name: Deploy to AWS EC2
+name: Deploy Monorepo to AWS EC2
 
 on:
   push:
-    branches: [ "deploy" ]  # Se activa solo en la rama deploy
+    branches: [ "deploy" ]  # Se activa automáticamente al hacer push a la rama deploy
 
 jobs:
   build-and-push:
@@ -11,37 +11,77 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    # 1. Autenticarse en el Registro de Contenedores (Ejemplo con Docker Hub)
+    # Autenticación requerida en AWS Academy usando Secrets [cite: 43]
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Obligatorio para Learner Lab
+        aws-region: us-east-1
+
+    # Login seguro en Docker Hub con tu Access Token [cite: 41, 43]
     - name: Login to Docker Hub
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    # 2. Construir y Publicar la imagen usando el Dockerfile Multi-stage
-    - name: Build and Push Docker Image
+    # Construcción y publicación del Frontend usando tag independiente [cite: 12, 40, 41]
+    - name: Build and Push Frontend Image
       run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-component:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-component:latest
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/deploy:frontend ./frontend
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/deploy:frontend
 
-  deploy:
+    # Construcción y publicación del Backend usando tag independiente [cite: 12, 40, 41]
+    - name: Build and Push Backend Image
+      run: |
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/deploy:backend ./backend
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/deploy:backend
+
+  deploy-frontend:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-    # 3. Conectarse a AWS EC2 vía SSH para actualizar el contenedor
-    - name: Deploy to EC2 via SSH
+    # Despliegue automatizado en la instancia EC2 del Frontend [cite: 14, 42]
+    - name: Deploy Frontend to EC2 via SSH
       uses: appleboy/ssh-action@v0.1.10
       with:
-        host: ${{ secrets.EC2_HOST }}
+        host: ${{ secrets.EC2_FRONT_HOST }} # Usa un secreto con la IP del Front
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          # Descargar la última versión de la imagen recién compilada
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-component:latest
+          # Bajar la versión actualizada desde tu repositorio "deploy"
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/deploy:frontend
           
-          # Detener el contenedor anterior si existe
-          docker stop innovatech-app || true
-          docker rm innovatech-app || true
+          # Limpiar el contenedor anterior de la interfaz web si existe
+          docker stop innovatech-frontend || true
+          docker rm innovatech-frontend || true
           
-          # Levantar el nuevo contenedor mapeando puertos y variables
-          docker run -d --name foodie-app -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/innovatech-component:latest
+          # Levantar el contenedor en el puerto HTTP standard (80) [cite: 56]
+          docker run -d --name innovatech-frontend -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/deploy:frontend
+
+  deploy-backend:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+    # Despliegue automatizado en la instancia EC2 privada del Backend [cite: 14, 42, 71]
+    - name: Deploy Backend to EC2 via SSH
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.EC2_BACK_HOST }} # Usa un secreto con la IP del Back
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Bajar la versión de la API desde tu repositorio "deploy"
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/deploy:backend
+          
+          # Limpiar el contenedor anterior de la API si existe
+          docker stop innovatech-backend || true
+          docker rm innovatech-backend || true
+          
+          # Levantar el contenedor mapeando el puerto interno (ejemplo: 3000) y persistencia [cite: 33, 62]
+          docker run -d --name innovatech-backend \
+            -p 3000:3000 \
+            -v backend-data:/app/data \
+            ${{ secrets.DOCKERHUB_USERNAME }}/deploy:backend
