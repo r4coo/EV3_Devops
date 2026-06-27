@@ -10,7 +10,7 @@ env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: innovatech-backend
   ECS_SERVICE: innovatech-backend-service
-  ECS_CLUSTER: innovatech-cluster
+  ECS_CLUSTER: innovatech-clusterr
   ECS_TASK_DEFINITION: backend/.aws/task-def-back.json
   CONTAINER_NAME: innovatech-backend-container
 
