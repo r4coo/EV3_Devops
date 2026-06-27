@@ -4,7 +4,7 @@ services:
       context: ./frontend
       dockerfile: frontend.dockerfile
     ports:
-      - "80:80"
+      - "3000:3000"
     networks:
       - red-interna
     depends_on:
@@ -18,7 +18,7 @@ services:
       - DB_HOST=database
       - DB_PORT=5432
     ports:
-      - "3000:3000"
+      - "80:80"
     volumes:
       - backend-data:/app/data  # Persistencia solicitada
     networks:
